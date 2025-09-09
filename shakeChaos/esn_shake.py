@@ -8,6 +8,103 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
+import math
+import numpy as np
+
+def softmax(logits):
+    logits = logits - np.max(logits)
+    exp = np.exp(logits)
+    return exp / np.sum(exp)
+
+def evaluate_free_running(
+    indices,
+    vocab_size,
+    Win, W, Wout, V=None,
+    alpha=0.3,
+    include_input_in_readout=True,
+    seed_len=200,
+    gen_len=1000,
+):
+    """
+    Free-running evaluation: generate text by feeding back own predictions.
+    Compute char-level perplexity against the true test sequence.
+    
+    Args:
+        indices: np.array of test indices (int)
+        vocab_size: number of chars
+        Win, W, Wout, V: ESN parameters
+        alpha: leaking rate
+        seed_len: length of seed prefix from test set
+        gen_len: number of characters to generate/evaluate
+    Returns:
+        perplexity (float), generated string
+    """
+    n_res = W.shape[0]
+    I = np.eye(vocab_size, dtype=np.float32)
+    x = np.zeros(n_res, dtype=np.float32)
+    bias = np.array([1.0], dtype=np.float32)
+
+    # seed with ground-truth
+    seed_idx = indices[:seed_len]
+    u = I[seed_idx[0]]
+
+    # run seed into reservoir
+    for t in range(seed_len-1):
+        v_idx = seed_idx[t+1]
+        if V is None:
+            fb = np.zeros(vocab_size, dtype=np.float32)
+        else:
+            fb = (V @ x).astype(np.float32)
+        in_vec = np.concatenate([bias, (u + fb).astype(np.float32)], dtype=np.float32)
+        preact = Win @ in_vec + W @ x
+        x = (1.0 - alpha) * x + alpha * np.tanh(preact)
+        u = I[v_idx]  # teacher forcing only for the seed phase
+
+    # now free-run
+    generated = []
+    log_probs = []
+    u_idx = seed_idx[-1]
+    u = I[u_idx]
+    for t in range(gen_len):
+        if V is None:
+            fb = np.zeros(vocab_size, dtype=np.float32)
+        else:
+            fb = (V @ x).astype(np.float32)
+        in_vec = np.concatenate([bias, (u + fb).astype(np.float32)], dtype=np.float32)
+        preact = Win @ in_vec + W @ x
+        x = (1.0 - alpha) * x + alpha * np.tanh(preact)
+
+        # features for readout
+        if include_input_in_readout:
+            z = np.concatenate([bias, u, x], dtype=np.float32)
+        else:
+            z = np.concatenate([bias, x], dtype=np.float32)
+
+        logits = Wout @ z
+        probs = softmax(logits)
+
+        # predicted char
+        pred_idx = int(np.argmax(probs))
+        generated.append(pred_idx)
+
+        # true next char (from test sequence)
+        true_idx = indices[seed_len + t] if seed_len + t < len(indices) else None
+        if true_idx is not None:
+            log_probs.append(math.log(probs[true_idx] + 1e-12))  # avoid log(0)
+
+        # update input u for next step (feed prediction back)
+        u = I[pred_idx]
+
+    # perplexity over available true targets
+    if len(log_probs) > 0:
+        avg_logp = sum(log_probs) / len(log_probs)
+        perplexity = math.exp(-avg_logp)
+    else:
+        perplexity = float("inf")
+
+    return perplexity, generated
+
+
 def build_vocab(text):
     chars = sorted(list(set(text)))
     stoi = {ch: i for i, ch in enumerate(chars)}
@@ -249,6 +346,22 @@ def main():
         plt.show()
     except Exception:
         pass
+
+    ppl, gen_indices = evaluate_free_running(
+        test_idx,
+        vocab_size,
+        Win, W, Wout, V=V,
+        alpha=args.alpha,
+        include_input_in_readout=args.include_input,
+        seed_len=200,
+        gen_len=1000,
+    )
+
+    gen_text = "".join([itos[i] for i in gen_indices])
+    print(f"Free-running perplexity on test set: {ppl:.4f}")
+    print("Sample generated text:")
+    print(gen_text[:500], "...")
+
 
 if __name__ == "__main__":
     main()
