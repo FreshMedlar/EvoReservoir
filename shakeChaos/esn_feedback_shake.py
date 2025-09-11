@@ -9,9 +9,7 @@
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-
 import math
-import numpy as np
 
 def softmax(logits):
     logits = logits - np.max(logits)
