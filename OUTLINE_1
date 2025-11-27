@@ -1,0 +1,5 @@
+ 𝓒 reservoir
+  ├ ƒ __init__
+  ├  weights
+   ƒ create_reservoir
+  └ ƒ step
