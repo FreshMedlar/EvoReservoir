@@ -20,15 +20,15 @@ def main():
     print(f"Vocabulary size: {vocab_size}")
     
     # 3. Parameters
-    res_size = 1000
+    res_size = 1500
     train_len = 120000
     val_len = 10000
-    warmup_steps = 100
+    warmup_steps = 200
     beta = 1e-4  # Ridge regularization coefficient
     input_scaling = 1.0
     
     # Initialize reservoir
-    reservoir = Reservoir(res_size, vocab_size, input_scaling=input_scaling)
+    reservoir = Reservoir(res_size, vocab_size, input_scaling=input_scaling, density=0.01)
     
     # 4. Prepare inputs & targets
     # We will use one-hot encoding for inputs
