@@ -20,7 +20,7 @@ def main():
     print(f"Vocabulary size: {vocab_size}")
     
     # 3. Parameters
-    res_size = 1500
+    res_size = 3000
     train_len = 120000
     val_len = 10000
     warmup_steps = 200
